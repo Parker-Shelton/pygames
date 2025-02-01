@@ -18,6 +18,13 @@ MOVEMENT_SPEED = 0.05
 RAY_COUNT = 160  # Number of rays to cast (resolution)
 MAP_SIZE = 15  # Size of the map (must be odd number)
 
+# Special wall types
+WALL_EMPTY = 0
+WALL_BLOCK = 1
+WALL_START = 2
+WALL_END = 3
+WALL_BALL = 4  # New constant for balls
+
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -28,92 +35,73 @@ DARK_GRAY = (50, 50, 50)
 GRAY = (100, 100, 100)
 LIGHT_GRAY = (150, 150, 150)
 
-# Special wall types
-WALL_NORMAL = 1
-WALL_START = 2
-WALL_END = 3
+def flood_fill(world_map, start_x, start_y):
+    reachable = set()
+    q = Queue()
+    q.put((start_x, start_y))
+    reachable.add((start_x, start_y))
+    
+    while not q.empty():
+        x, y = q.get()
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            new_x, new_y = x + dx, y + dy
+            if (0 <= new_x < MAP_SIZE and 0 <= new_y < MAP_SIZE and 
+                world_map[new_y][new_x] == WALL_EMPTY and 
+                (new_x, new_y) not in reachable):
+                reachable.add((new_x, new_y))
+                q.put((new_x, new_y))
+    
+    return reachable
 
 def generate_random_map():
-    # Initialize map with walls
-    world_map = [[1 for _ in range(MAP_SIZE)] for _ in range(MAP_SIZE)]
-    
-    # Create empty space in the middle
-    for y in range(1, MAP_SIZE-1):
-        for x in range(1, MAP_SIZE-1):
-            world_map[y][x] = random.randint(0, 1)
-    
-    # Place start cube on left wall and ensure adjacent space is empty
-    start_y = random.randint(1, MAP_SIZE-2)
-    world_map[start_y][0] = WALL_START
-    world_map[start_y][1] = 0  # Ensure path from start
-    world_map[start_y-1][1] = 0  # Create some room to move
-    world_map[start_y+1][1] = 0
-    
-    # Make sure the map is traversable using flood fill
-    def flood_fill():
-        visited = [[False for _ in range(MAP_SIZE)] for _ in range(MAP_SIZE)]
-        distances = [[0 for _ in range(MAP_SIZE)] for _ in range(MAP_SIZE)]
-        q = Queue()
-        # Start flood fill from the space next to start cube
-        q.put((1, start_y))
-        visited[start_y][1] = True
-        
-        while not q.empty():
-            x, y = q.get()
-            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-                new_x, new_y = x + dx, y + dy
-                if (0 <= new_x < MAP_SIZE and 0 <= new_y < MAP_SIZE and 
-                    not visited[new_y][new_x] and world_map[new_y][new_x] == 0):
-                    visited[new_y][new_x] = True
-                    distances[new_y][new_x] = distances[y][x] + 1
-                    q.put((new_x, new_y))
-        
-        return visited, distances
-    
-    # Keep generating new maps until we get one that's sufficiently connected
     while True:
-        visited, distances = flood_fill()
-        empty_spaces = sum(1 for y in range(1, MAP_SIZE-1) 
-                         for x in range(1, MAP_SIZE-1) 
-                         if world_map[y][x] == 0)
-        reachable_spaces = sum(1 for y in range(MAP_SIZE) 
-                             for x in range(MAP_SIZE) 
-                             if visited[y][x])
+        # Initialize map with walls
+        world_map = [[WALL_BLOCK for _ in range(MAP_SIZE)] for _ in range(MAP_SIZE)]
         
-        # If at least 70% of empty spaces are reachable, try to place end cube
-        if reachable_spaces >= 0.7 * empty_spaces:
-            # Try to place end cube on right wall
-            best_end_y = None
-            max_dist = 0
-            
-            # Check all positions on right wall
-            for y in range(1, MAP_SIZE-1):
-                # Check if the space next to the wall is reachable
-                if visited[y][MAP_SIZE-2]:
-                    dist = distances[y][MAP_SIZE-2]
-                    if dist > max_dist:
-                        max_dist = dist
-                        best_end_y = y
-            
-            # If we found a good spot and it's far enough
-            if best_end_y and max_dist > MAP_SIZE // 2:
-                world_map[best_end_y][MAP_SIZE-1] = WALL_END
-                # Ensure path to end is clear
-                world_map[best_end_y][MAP_SIZE-2] = 0
-                world_map[best_end_y-1][MAP_SIZE-2] = 0
-                world_map[best_end_y+1][MAP_SIZE-2] = 0
-                break
-        
-        # Otherwise, regenerate the middle of the map
+        # Create random empty spaces
         for y in range(1, MAP_SIZE-1):
             for x in range(1, MAP_SIZE-1):
-                world_map[y][x] = random.randint(0, 1)
-        # Ensure path from start is clear
-        world_map[start_y][1] = 0
-        world_map[start_y-1][1] = 0
-        world_map[start_y+1][1] = 0
-    
-    return world_map
+                if random.random() < 0.7:  # 70% chance of empty space
+                    world_map[y][x] = WALL_EMPTY
+        
+        # Place start on left wall
+        start_y = random.randint(1, MAP_SIZE-2)
+        world_map[start_y][0] = WALL_START
+        world_map[start_y][1] = WALL_EMPTY  # Ensure space next to start is empty
+        
+        # Make sure there's a path from start
+        reachable = flood_fill(world_map, 1, start_y)
+        if len(reachable) < (MAP_SIZE * MAP_SIZE * 0.7):  # Want at least 70% reachable
+            continue
+        
+        # Find furthest reachable point on right wall for end
+        max_dist = 0
+        end_pos = None
+        for y in range(1, MAP_SIZE-1):
+            if world_map[y][MAP_SIZE-2] == WALL_EMPTY and (MAP_SIZE-2, y) in reachable:
+                dist = abs(y - start_y)
+                if dist > max_dist:
+                    max_dist = dist
+                    end_pos = (MAP_SIZE-1, y)
+        
+        if not end_pos:
+            continue
+        
+        world_map[end_pos[1]][end_pos[0]] = WALL_END
+        
+        # Add 5 white balls in random empty spaces
+        empty_spaces = [(x, y) for y in range(1, MAP_SIZE-1) 
+                       for x in range(1, MAP_SIZE-1) 
+                       if world_map[y][x] == WALL_EMPTY]
+        
+        if len(empty_spaces) >= 5:
+            random.shuffle(empty_spaces)
+            for x, y in empty_spaces[:5]:
+                world_map[y][x] = WALL_BALL
+        else:
+            continue  # Try again if not enough empty spaces
+        
+        return world_map
 
 # Generate the initial world map
 WORLD_MAP = generate_random_map()
@@ -293,25 +281,24 @@ def render_world(surface, player):
         # Choose wall color based on type and side
         if wall_type == WALL_START:
             base_color = RED
-            # Draw normal wall strip for start cube
-            shade = min(1.0, 1.0 / (distance * 0.3))
-            wall_color = tuple(int(c * shade) for c in base_color)
-            pygame.draw.rect(surface, wall_color, 
-                           (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
         elif wall_type == WALL_END:
-            # Simple green wall
             base_color = GREEN
-            shade = min(1.0, 1.0 / (distance * 0.3))
-            wall_color = tuple(int(c * shade) for c in base_color)
-            pygame.draw.rect(surface, wall_color, 
-                           (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
+        elif wall_type == WALL_BALL:
+            base_color = (255, 255, 255)  # White for balls
+            # Make balls appear spherical by adjusting height
+            wall_height *= 0.5  # Make balls smaller than walls
+            wall_top = (WINDOW_HEIGHT - wall_height) / 2
+            wall_bottom = (WINDOW_HEIGHT + wall_height) / 2
         else:
             base_color = LIGHT_GRAY if side == 1 else GRAY
-            # Draw normal wall strip
-            shade = min(1.0, 1.0 / (distance * 0.3))
-            wall_color = tuple(int(c * shade) for c in base_color)
-            pygame.draw.rect(surface, wall_color, 
-                           (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
+        
+        # Apply distance shading
+        shade = min(1.0, 1.0 / (distance * 0.3))
+        wall_color = tuple(int(c * shade) for c in base_color)
+        
+        # Draw wall strip
+        pygame.draw.rect(surface, wall_color, 
+                        (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
 
 def draw_minimap(surface, player, scale=20):
     # Draw map
