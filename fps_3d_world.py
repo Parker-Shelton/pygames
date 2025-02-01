@@ -293,18 +293,43 @@ def render_world(surface, player):
         # Choose wall color based on type and side
         if wall_type == WALL_START:
             base_color = RED
+            # Draw normal wall strip for start cube
+            shade = min(1.0, 1.0 / (distance * 0.3))
+            wall_color = tuple(int(c * shade) for c in base_color)
+            pygame.draw.rect(surface, wall_color, 
+                           (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
         elif wall_type == WALL_END:
             base_color = GREEN
+            # Draw stairs effect for end cube
+            num_steps = 8  # Number of stair steps
+            step_height = (wall_bottom - wall_top) / num_steps
+            
+            for step in range(num_steps):
+                # Calculate step positions
+                step_top = wall_top + step * step_height
+                step_bottom = step_top + step_height
+                
+                # Make steps appear to go down by adjusting shading
+                step_shade = min(1.0, 1.0 / (distance * 0.3)) * (1 - step/num_steps * 0.5)
+                step_color = tuple(int(c * step_shade) for c in base_color)
+                
+                # Draw step
+                pygame.draw.rect(surface, step_color,
+                               (strip_pos, step_top, strip_width + 1, step_bottom - step_top))
+                
+                # Draw diagonal line for step edge (darker)
+                edge_color = tuple(int(c * step_shade * 0.7) for c in base_color)
+                if strip_width > 2:  # Only draw if strip is wide enough
+                    pygame.draw.line(surface, edge_color,
+                                   (strip_pos, step_bottom),
+                                   (strip_pos + strip_width, step_bottom))
         else:
             base_color = LIGHT_GRAY if side == 1 else GRAY
-            
-        # Apply distance shading
-        shade = min(1.0, 1.0 / (distance * 0.3))
-        wall_color = tuple(int(c * shade) for c in base_color)
-        
-        # Draw wall strip
-        pygame.draw.rect(surface, wall_color, 
-                        (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
+            # Draw normal wall strip
+            shade = min(1.0, 1.0 / (distance * 0.3))
+            wall_color = tuple(int(c * shade) for c in base_color)
+            pygame.draw.rect(surface, wall_color, 
+                           (strip_pos, wall_top, strip_width + 1, wall_bottom - wall_top))
 
 def draw_minimap(surface, player, scale=20):
     # Draw map
