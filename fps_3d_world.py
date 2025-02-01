@@ -125,6 +125,13 @@ clock = pygame.time.Clock()
 
 class Player:
     def __init__(self):
+        self.reset_position()
+        
+        # Lock and hide the mouse cursor
+        pygame.mouse.set_visible(False)
+        pygame.event.set_grab(True)
+    
+    def reset_position(self):
         # Find start cube position
         start_pos = None
         for y in range(MAP_SIZE):
@@ -146,10 +153,6 @@ class Player:
         self.y = start_pos[1] + 0.5  # Center in the tile
         self.angle = 0.0  # Starting angle
         self.height = WINDOW_HEIGHT / 2
-        
-        # Lock and hide the mouse cursor
-        pygame.mouse.set_visible(False)
-        pygame.event.set_grab(True)
     
     def handle_mouse(self):
         # Get mouse movement
@@ -182,6 +185,31 @@ class Player:
         if WORLD_MAP[int(new_y)][int(new_x)] == 0:
             self.x = new_x
             self.y = new_y
+    
+    def check_end_cube(self):
+        # Check if player is close to end cube
+        player_tile_x = int(self.x)
+        player_tile_y = int(self.y)
+        
+        # Calculate exact distance to player center
+        player_center_x = self.x
+        player_center_y = self.y
+        
+        # Check immediate adjacent tiles only (not diagonals)
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            check_x = player_tile_x + dx
+            check_y = player_tile_y + dy
+            if (0 <= check_x < MAP_SIZE and 0 <= check_y < MAP_SIZE and 
+                WORLD_MAP[check_y][check_x] == WALL_END):
+                # Calculate distance to the end cube center
+                cube_center_x = check_x + 0.5
+                cube_center_y = check_y + 0.5
+                distance = math.sqrt((player_center_x - cube_center_x)**2 + 
+                                  (player_center_y - cube_center_y)**2)
+                # Player must be within 1.2 units of the cube center
+                if distance < 1.2:
+                    return True
+        return False
 
 def cast_ray(player, angle):
     # Ray casting algorithm using DDA (Digital Differential Analysis)
@@ -301,8 +329,31 @@ def draw_minimap(surface, player, scale=20):
     end_y = player_y + math.sin(player.angle) * 10
     pygame.draw.line(surface, RED, (player_x, player_y), (end_x, end_y), 1)
 
+def draw_loading_screen(surface, level):
+    surface.fill(BLACK)
+    
+    # Draw loading text
+    font = pygame.font.Font(None, 74)
+    text = font.render(f"Level {level} Complete!", True, WHITE)
+    text_rect = text.get_rect(center=(WINDOW_WIDTH/2, WINDOW_HEIGHT/2 - 50))
+    surface.blit(text, text_rect)
+    
+    # Draw loading animation
+    loading_text = "Loading next level..."
+    loading_font = pygame.font.Font(None, 36)
+    dots = "." * ((pygame.time.get_ticks() // 500) % 4)  # Animated dots
+    loading = loading_font.render(loading_text + dots, True, WHITE)
+    loading_rect = loading.get_rect(center=(WINDOW_WIDTH/2, WINDOW_HEIGHT/2 + 50))
+    surface.blit(loading, loading_rect)
+    
+    pygame.display.flip()
+
 def main():
+    global WORLD_MAP  # Make WORLD_MAP global so we can modify it
     player = Player()
+    level = 1
+    loading_start_time = 0
+    is_loading = False
     
     while True:
         for event in pygame.event.get():
@@ -314,19 +365,41 @@ def main():
                     pygame.quit()
                     sys.exit()
         
+        current_time = pygame.time.get_ticks()
+        
+        if is_loading:
+            # Show loading screen for 2 seconds
+            if current_time - loading_start_time >= 2000:
+                # Generate new map and reset player
+                WORLD_MAP = generate_random_map()
+                player.reset_position()
+                is_loading = False
+                level += 1
+            else:
+                draw_loading_screen(screen, level)
+                continue
+        
         # Handle input
         keys = pygame.key.get_pressed()
         player.handle_mouse()
         player.handle_movement(keys)
         
-        # Clear screen
-        screen.fill(BLACK)
+        # Check if player reached end cube
+        if player.check_end_cube():
+            is_loading = True
+            loading_start_time = current_time
+            continue
         
-        # Render 3D view
+        # Draw world
         render_world(screen, player)
         
-        # Draw minimap
-        draw_minimap(screen, player)
+        # Draw minimap (commented out but kept for future use)
+        # draw_minimap(screen, player)
+        
+        # Draw level counter
+        font = pygame.font.Font(None, 36)
+        level_text = font.render(f"Level: {level}", True, WHITE)
+        screen.blit(level_text, (10, 10))
         
         pygame.display.flip()
         clock.tick(60)
